@@ -1,0 +1,10 @@
+project_id = "kksfxklekojlxmjaijir"
+
+[functions.check-expiring-documents]
+verify_jwt = false
+
+[functions.scan-document]
+verify_jwt = false
+
+[functions.scan-document-pack]
+verify_jwt = false
