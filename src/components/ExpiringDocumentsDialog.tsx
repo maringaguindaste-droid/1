@@ -135,8 +135,9 @@ export function ExpiringDocumentsDialog({ open, onOpenChange, filter = 'all' }: 
   const filteredDocs = filterDocuments(documents, activeTab);
 
   const handleViewEmployee = (employeeId: string) => {
+    // Leva para a rota de detalhes existente
     onOpenChange(false);
-    navigate(`/employees/details/${employeeId}`);
+    navigate(`/employees/${employeeId}/view`);
   };
 
   return (

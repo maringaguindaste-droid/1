@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload } from "lucide-react";
+import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -479,6 +479,13 @@ export default function Documents() {
                         </Button>
                       </>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/documents/${doc.id}/edit`)}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
