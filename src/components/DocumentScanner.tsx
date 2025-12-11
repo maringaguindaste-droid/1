@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Camera, Upload, Loader2, FileCheck, AlertCircle, X } from "lucide-react";
+import { Camera, Upload, Loader2, FileCheck, AlertCircle, X, FileText } from "lucide-react";
 
 interface ScannedData {
   full_name?: string | null;
@@ -33,12 +33,16 @@ interface DocumentScannerProps {
 const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScannerProps) => {
   const { toast } = useToast();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
+      setIsPdf(file.type === "application/pdf");
+      setSelectedFileName(file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedImage(reader.result as string);
@@ -51,7 +55,8 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+      'image/*': ['.jpeg', '.jpg', '.png', '.webp'],
+      'application/pdf': ['.pdf']
     },
     maxFiles: 1,
     maxSize: 10 * 1024 * 1024 // 10MB
@@ -104,6 +109,8 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
       onDataExtracted(scanResult.data);
       onOpenChange(false);
       setSelectedImage(null);
+      setSelectedFileName(null);
+      setIsPdf(false);
       setScanResult(null);
       
       toast({
@@ -116,6 +123,8 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
   const handleClose = () => {
     onOpenChange(false);
     setSelectedImage(null);
+    setSelectedFileName(null);
+    setIsPdf(false);
     setScanResult(null);
   };
 
@@ -147,7 +156,7 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
                 <div>
                   <p className="font-medium">Arraste a imagem ou clique para selecionar</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Formatos: JPG, PNG, WEBP (máx. 10MB)
+                    Formatos: JPG, PNG, WEBP, PDF (máx. 10MB)
                   </p>
                 </div>
               </div>
@@ -155,22 +164,51 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
           ) : (
             <div className="space-y-4">
               <div className="relative">
-                <img
-                  src={selectedImage}
-                  alt="Documento selecionado"
-                  className="w-full rounded-lg border max-h-64 object-contain bg-muted/50"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 bg-background/80 hover:bg-background"
-                  onClick={() => {
-                    setSelectedImage(null);
-                    setScanResult(null);
-                  }}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+                {isPdf ? (
+                  <div className="w-full rounded-lg border bg-muted/30 p-4 flex items-center gap-3">
+                    <div className="p-3 rounded-full bg-primary/10">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{selectedFileName || "Documento.pdf"}</p>
+                      <p className="text-xs text-muted-foreground">PDF selecionado</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setSelectedImage(null);
+                        setSelectedFileName(null);
+                        setIsPdf(false);
+                        setScanResult(null);
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <img
+                      src={selectedImage || undefined}
+                      alt="Documento selecionado"
+                      className="w-full rounded-lg border max-h-64 object-contain bg-muted/50"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2 bg-background/80 hover:bg-background"
+                      onClick={() => {
+                        setSelectedImage(null);
+                        setSelectedFileName(null);
+                        setIsPdf(false);
+                        setScanResult(null);
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </>
+                )}
               </div>
 
               {scanResult?.success && scanResult.data && (
