@@ -47,17 +47,6 @@ interface Company {
   cnpj: string | null;
 }
 
-const parseDateToISO = (value?: string | null) => {
-  if (!value) return "";
-  // Se vier no formato dd/mm/aaaa converte para yyyy-mm-dd
-  const slashMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (slashMatch) {
-    const [, d, m, y] = slashMatch;
-    return `${y}-${m}-${d}`;
-  }
-  return value;
-};
-
 const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -77,6 +66,9 @@ const EmployeeForm = () => {
     cpf?: string | null;
     rg?: string | null;
     birth_date?: string | null;
+    filiation?: string | null;
+    nationality?: string | null;
+    naturalness?: string | null;
     cep?: string | null;
     municipality?: string | null;
     neighborhood?: string | null;
@@ -87,12 +79,12 @@ const EmployeeForm = () => {
     position?: string | null;
     admission_date?: string | null;
     validation_date?: string | null;
-    company_name?: string | null;
-    company_cnpj?: string | null;
     responsible_function?: string | null;
+    work_location?: string | null;
   }) => {
     const fieldsUpdated: string[] = [];
     
+    // Dados de Identificação
     if (data.full_name) {
       setValue("full_name", data.full_name);
       fieldsUpdated.push("full_name");
@@ -107,16 +99,15 @@ const EmployeeForm = () => {
       fieldsUpdated.push("rg");
     }
     if (data.birth_date) {
-      setValue("birth_date", parseDateToISO(data.birth_date));
+      setValue("birth_date", data.birth_date);
       fieldsUpdated.push("birth_date");
     }
+    
+    // Dados de Endereço
     if (data.cep) {
-      const formattedCEP = formatCEP(data.cep);
+      const formattedCEP = formatCEP(data.cep.replace(/\D/g, ''));
       setValue("cep", formattedCEP);
       fieldsUpdated.push("cep");
-      if (formattedCEP.replace(/[^\d]/g, '').length === 8) {
-        fetchAddressByCEP(formattedCEP);
-      }
     }
     if (data.municipality) {
       setValue("municipality", data.municipality);
@@ -130,64 +121,51 @@ const EmployeeForm = () => {
       setValue("address", data.address);
       fieldsUpdated.push("address");
     }
+    
+    // Dados de Contato
     if (data.phone) {
-      const formatted = formatPhone(data.phone);
-      setValue("phone", formatted);
+      const formattedPhone = formatPhone(data.phone.replace(/\D/g, ''));
+      setValue("phone", formattedPhone);
       fieldsUpdated.push("phone");
     }
     if (data.mobile) {
-      const formatted = formatPhone(data.mobile);
-      setValue("mobile", formatted);
+      const formattedMobile = formatPhone(data.mobile.replace(/\D/g, ''));
+      setValue("mobile", formattedMobile);
       fieldsUpdated.push("mobile");
     }
     if (data.email) {
       setValue("email", data.email);
       fieldsUpdated.push("email");
     }
+    
+    // Dados Profissionais
     if (data.position) {
       setValue("position", data.position);
       fieldsUpdated.push("position");
     }
     if (data.admission_date) {
-      setValue("admission_date", parseDateToISO(data.admission_date));
+      setValue("admission_date", data.admission_date);
       fieldsUpdated.push("admission_date");
     }
     if (data.validation_date) {
-      setValue("validation_date", parseDateToISO(data.validation_date));
+      setValue("validation_date", data.validation_date);
       fieldsUpdated.push("validation_date");
     }
     if (data.responsible_function) {
       setValue("responsible_function", data.responsible_function);
       fieldsUpdated.push("responsible_function");
     }
-    if (data.company_name) {
-      setValue("company_name", data.company_name);
-      fieldsUpdated.push("company_name");
-    }
-    if (data.company_cnpj) {
-      setValue("company_cnpj", data.company_cnpj);
-      fieldsUpdated.push("company_cnpj");
-    }
-    // Tentar mapear empresa por CNPJ ou nome
-    if ((data.company_cnpj || data.company_name) && allCompanies.length > 0) {
-      const matchedCompany = allCompanies.find((c) =>
-        (data.company_cnpj && c.cnpj === data.company_cnpj) ||
-        (data.company_name && c.name.toLowerCase().includes(data.company_name.toLowerCase()))
-      );
-      if (matchedCompany) {
-        setValue("company_id", matchedCompany.id);
-        setValue("company_name", matchedCompany.name);
-        setValue("company_cnpj", matchedCompany.cnpj || "");
-        fieldsUpdated.push("company_id");
-      }
+    if (data.work_location) {
+      setValue("work_location", data.work_location);
+      fieldsUpdated.push("work_location");
     }
     
     setHighlightedFields(fieldsUpdated);
     
-    // Remove highlight after 3 seconds
+    // Remove highlight after 5 seconds
     setTimeout(() => {
       setHighlightedFields([]);
-    }, 3000);
+    }, 5000);
   };
 
   const selectedCompanyId = watch("company_id");
@@ -492,6 +470,7 @@ const EmployeeForm = () => {
                         id="cep"
                         {...register("cep")}
                         placeholder="00000-000"
+                        className={highlightedFields.includes("cep") ? "ring-2 ring-green-500 border-green-500" : ""}
                         onChange={(e) => {
                           const formatted = formatCEP(e.target.value);
                           setValue("cep", formatted);
@@ -508,6 +487,7 @@ const EmployeeForm = () => {
                         id="municipality"
                         {...register("municipality")}
                         placeholder="Cidade"
+                        className={highlightedFields.includes("municipality") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div>
@@ -516,6 +496,7 @@ const EmployeeForm = () => {
                         id="neighborhood"
                         {...register("neighborhood")}
                         placeholder="Bairro"
+                        className={highlightedFields.includes("neighborhood") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div className="md:col-span-3">
@@ -524,6 +505,7 @@ const EmployeeForm = () => {
                         id="address"
                         {...register("address")}
                         placeholder="Rua, número, complemento"
+                        className={highlightedFields.includes("address") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                   </div>
@@ -538,6 +520,7 @@ const EmployeeForm = () => {
                         id="phone"
                         {...register("phone")}
                         placeholder="(00) 0000-0000"
+                        className={highlightedFields.includes("phone") ? "ring-2 ring-green-500 border-green-500" : ""}
                         onChange={(e) => {
                           const formatted = formatPhone(e.target.value);
                           setValue("phone", formatted);
@@ -550,6 +533,7 @@ const EmployeeForm = () => {
                         id="mobile"
                         {...register("mobile")}
                         placeholder="(00) 00000-0000"
+                        className={highlightedFields.includes("mobile") ? "ring-2 ring-green-500 border-green-500" : ""}
                         onChange={(e) => {
                           const formatted = formatPhone(e.target.value);
                           setValue("mobile", formatted);
@@ -563,6 +547,7 @@ const EmployeeForm = () => {
                         type="email"
                         {...register("email")}
                         placeholder="email@exemplo.com"
+                        className={highlightedFields.includes("email") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                   </div>
@@ -605,6 +590,7 @@ const EmployeeForm = () => {
                         id="position"
                         {...register("position", { required: true })}
                         placeholder="Cargo do funcionário"
+                        className={highlightedFields.includes("position") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div>
@@ -631,6 +617,7 @@ const EmployeeForm = () => {
                         id="admission_date"
                         type="date"
                         {...register("admission_date")}
+                        className={highlightedFields.includes("admission_date") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div>
@@ -639,6 +626,7 @@ const EmployeeForm = () => {
                         id="validation_date"
                         type="date"
                         {...register("validation_date")}
+                        className={highlightedFields.includes("validation_date") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div>
@@ -647,6 +635,7 @@ const EmployeeForm = () => {
                         id="responsible_function"
                         {...register("responsible_function")}
                         placeholder="Função"
+                        className={highlightedFields.includes("responsible_function") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div>
@@ -670,6 +659,7 @@ const EmployeeForm = () => {
                         id="work_location"
                         {...register("work_location")}
                         placeholder="Local de trabalho"
+                        className={highlightedFields.includes("work_location") ? "ring-2 ring-green-500 border-green-500" : ""}
                       />
                     </div>
                     <div className="md:col-span-2">

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Camera, Upload, Loader2, FileCheck, AlertCircle, X, FileText } from "lucide-react";
 
-interface ScannedData {
+export interface ScannedData {
   full_name?: string | null;
   cpf?: string | null;
   rg?: string | null;
@@ -14,19 +14,21 @@ interface ScannedData {
   filiation?: string | null;
   nationality?: string | null;
   naturalness?: string | null;
+  // Campos de endereço
   cep?: string | null;
   municipality?: string | null;
   neighborhood?: string | null;
   address?: string | null;
+  // Campos de contato
   phone?: string | null;
   mobile?: string | null;
   email?: string | null;
+  // Campos profissionais
   position?: string | null;
   admission_date?: string | null;
   validation_date?: string | null;
-  company_name?: string | null;
-  company_cnpj?: string | null;
   responsible_function?: string | null;
+  work_location?: string | null;
 }
 
 interface ScanResult {
@@ -54,8 +56,10 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      setIsPdf(file.type === "application/pdf");
+      const isPdfFile = file.type === 'application/pdf';
+      setIsPdf(isPdfFile);
       setSelectedFileName(file.name);
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedImage(reader.result as string);
@@ -141,16 +145,20 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
     setScanResult(null);
   };
 
+  const countExtractedFields = (data: ScannedData): number => {
+    return Object.values(data).filter(v => v !== null && v !== undefined && v !== '').length;
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-primary" />
             Scanner de Documento
           </DialogTitle>
           <DialogDescription>
-            Tire uma foto ou faça upload de um documento (RG, CNH, CTPS) para preencher automaticamente
+            Tire uma foto ou faça upload de um documento (RG, CNH, CTPS, PDF) para preencher automaticamente todos os campos
           </DialogDescription>
         </DialogHeader>
 
@@ -167,7 +175,7 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
                   <Upload className="w-8 h-8 text-primary" />
                 </div>
                 <div>
-                  <p className="font-medium">Arraste a imagem ou clique para selecionar</p>
+                  <p className="font-medium">Arraste a imagem/PDF ou clique para selecionar</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     Formatos: JPG, PNG, WEBP, PDF (máx. 10MB)
                   </p>
@@ -178,59 +186,46 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
             <div className="space-y-4">
               <div className="relative">
                 {isPdf ? (
-                  <div className="w-full rounded-lg border bg-muted/30 p-4 flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-primary/10">
-                      <FileText className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{selectedFileName || "Documento.pdf"}</p>
-                      <p className="text-xs text-muted-foreground">PDF selecionado</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setSelectedImage(null);
-                        setSelectedFileName(null);
-                        setIsPdf(false);
-                        setScanResult(null);
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                  <div className="w-full rounded-lg border bg-muted/50 p-8 flex flex-col items-center gap-3">
+                    <FileText className="w-16 h-16 text-primary" />
+                    <p className="text-sm font-medium">{selectedFileName}</p>
+                    <p className="text-xs text-muted-foreground">Documento PDF selecionado</p>
                   </div>
                 ) : (
-                  <>
-                    <img
-                      src={selectedImage || undefined}
-                      alt="Documento selecionado"
-                      className="w-full rounded-lg border max-h-64 object-contain bg-muted/50"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 bg-background/80 hover:bg-background"
-                      onClick={() => {
-                        setSelectedImage(null);
-                        setSelectedFileName(null);
-                        setIsPdf(false);
-                        setScanResult(null);
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </>
+                  <img
+                    src={selectedImage}
+                    alt="Documento selecionado"
+                    className="w-full rounded-lg border max-h-64 object-contain bg-muted/50"
+                  />
                 )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 bg-background/80 hover:bg-background"
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setSelectedFileName(null);
+                    setIsPdf(false);
+                    setScanResult(null);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
 
               {scanResult?.success && scanResult.data && (
-                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
-                    <FileCheck className="w-4 h-4" />
-                    Dados extraídos com sucesso!
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
+                      <FileCheck className="w-4 h-4" />
+                      Dados extraídos com sucesso!
+                    </div>
+                    <span className="text-xs bg-green-500/20 px-2 py-1 rounded">
+                      {countExtractedFields(scanResult.data)} campos
+                    </span>
                   </div>
-                  <div className="text-sm space-y-1">
+                  <div className="text-sm space-y-1 max-h-48 overflow-y-auto">
+                    {/* Identificação */}
                     {scanResult.data.full_name && (
                       <p><span className="text-muted-foreground">Nome:</span> {scanResult.data.full_name}</p>
                     )}
@@ -242,6 +237,57 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
                     )}
                     {scanResult.data.birth_date && (
                       <p><span className="text-muted-foreground">Nascimento:</span> {scanResult.data.birth_date}</p>
+                    )}
+                    {scanResult.data.filiation && (
+                      <p><span className="text-muted-foreground">Filiação:</span> {scanResult.data.filiation}</p>
+                    )}
+                    {scanResult.data.nationality && (
+                      <p><span className="text-muted-foreground">Nacionalidade:</span> {scanResult.data.nationality}</p>
+                    )}
+                    {scanResult.data.naturalness && (
+                      <p><span className="text-muted-foreground">Naturalidade:</span> {scanResult.data.naturalness}</p>
+                    )}
+                    
+                    {/* Endereço */}
+                    {scanResult.data.cep && (
+                      <p><span className="text-muted-foreground">CEP:</span> {scanResult.data.cep}</p>
+                    )}
+                    {scanResult.data.municipality && (
+                      <p><span className="text-muted-foreground">Município:</span> {scanResult.data.municipality}</p>
+                    )}
+                    {scanResult.data.neighborhood && (
+                      <p><span className="text-muted-foreground">Bairro:</span> {scanResult.data.neighborhood}</p>
+                    )}
+                    {scanResult.data.address && (
+                      <p><span className="text-muted-foreground">Endereço:</span> {scanResult.data.address}</p>
+                    )}
+                    
+                    {/* Contato */}
+                    {scanResult.data.phone && (
+                      <p><span className="text-muted-foreground">Telefone:</span> {scanResult.data.phone}</p>
+                    )}
+                    {scanResult.data.mobile && (
+                      <p><span className="text-muted-foreground">Celular:</span> {scanResult.data.mobile}</p>
+                    )}
+                    {scanResult.data.email && (
+                      <p><span className="text-muted-foreground">Email:</span> {scanResult.data.email}</p>
+                    )}
+                    
+                    {/* Profissional */}
+                    {scanResult.data.position && (
+                      <p><span className="text-muted-foreground">Cargo:</span> {scanResult.data.position}</p>
+                    )}
+                    {scanResult.data.admission_date && (
+                      <p><span className="text-muted-foreground">Data Admissão:</span> {scanResult.data.admission_date}</p>
+                    )}
+                    {scanResult.data.validation_date && (
+                      <p><span className="text-muted-foreground">Data Validação:</span> {scanResult.data.validation_date}</p>
+                    )}
+                    {scanResult.data.responsible_function && (
+                      <p><span className="text-muted-foreground">Função:</span> {scanResult.data.responsible_function}</p>
+                    )}
+                    {scanResult.data.work_location && (
+                      <p><span className="text-muted-foreground">Local Trabalho:</span> {scanResult.data.work_location}</p>
                     )}
                   </div>
                 </div>
@@ -299,12 +345,16 @@ const DocumentScanner = ({ open, onOpenChange, onDataExtracted }: DocumentScanne
               Usar câmera do dispositivo
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 capture="environment"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
+                    const isPdfFile = file.type === 'application/pdf';
+                    setIsPdf(isPdfFile);
+                    setSelectedFileName(file.name);
+                    
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       setSelectedImage(reader.result as string);

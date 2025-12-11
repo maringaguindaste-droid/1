@@ -39,6 +39,7 @@ const App = () => (
               <Route path="/employees/new" element={<ProtectedRoute requireAdmin><Layout><EmployeeForm /></Layout></ProtectedRoute>} />
               <Route path="/employees/:id" element={<ProtectedRoute requireAdmin><Layout><EmployeeForm /></Layout></ProtectedRoute>} />
               <Route path="/employees/:id/view" element={<ProtectedRoute><Layout><EmployeeDetails /></Layout></ProtectedRoute>} />
+              <Route path="/employees/details/:id" element={<ProtectedRoute><Layout><EmployeeDetails /></Layout></ProtectedRoute>} />
               <Route path="/documents" element={<ProtectedRoute><Layout><Documents /></Layout></ProtectedRoute>} />
               <Route path="/documents/new" element={<ProtectedRoute requireAdmin><Layout><DocumentForm /></Layout></ProtectedRoute>} />
               <Route path="/documents/:id/edit" element={<ProtectedRoute requireAdmin><Layout><DocumentForm /></Layout></ProtectedRoute>} />

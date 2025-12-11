@@ -8,20 +8,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload, Edit } from "lucide-react";
+import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload, Eye, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DocumentsByEmployee } from "@/components/DocumentsByEmployee";
 import { DocumentPackScanner } from "@/components/DocumentPackScanner";
+import { DocumentViewer } from "@/components/DocumentViewer";
+import { DocumentEditDialog } from "@/components/DocumentEditDialog";
 
 interface Document {
   id: string;
   employee_id: string;
   file_name: string;
   file_path: string;
+  document_type_id: string | null;
   expiration_date: string | null;
+  observations: string | null;
   status: string;
   created_at: string;
   document_types: {
@@ -50,6 +54,10 @@ export default function Documents() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedDocForView, setSelectedDocForView] = useState<{ filePath: string; fileName: string } | null>(null);
+  const [selectedDocForEdit, setSelectedDocForEdit] = useState<Document | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -309,6 +317,22 @@ export default function Documents() {
         description="Tem certeza que deseja excluir este documento? Esta ação não pode ser desfeita."
       />
 
+      {selectedDocForView && (
+        <DocumentViewer
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          filePath={selectedDocForView.filePath}
+          fileName={selectedDocForView.fileName}
+        />
+      )}
+
+      <DocumentEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        document={selectedDocForEdit}
+        onSave={fetchDocuments}
+      />
+
       <DocumentPackScanner 
         open={scannerOpen} 
         onOpenChange={setScannerOpen}
@@ -482,7 +506,20 @@ export default function Documents() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate(`/documents/${doc.id}/edit`)}
+                      onClick={() => {
+                        setSelectedDocForView({ filePath: doc.file_path, fileName: doc.file_name });
+                        setViewerOpen(true);
+                      }}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedDocForEdit(doc);
+                        setEditDialogOpen(true);
+                      }}
                     >
                       <Edit className="w-4 h-4" />
                     </Button>

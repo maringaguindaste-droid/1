@@ -31,13 +31,16 @@ import {
   AlertTriangle,
   UserX,
   Edit,
-  Trash2
+  Trash2,
+  Eye
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { DocumentViewer } from "@/components/DocumentViewer";
+import { DocumentEditDialog } from "@/components/DocumentEditDialog";
 
 interface Employee {
   id: string;
@@ -64,7 +67,9 @@ interface Document {
   id: string;
   file_name: string;
   file_path: string;
+  document_type_id: string | null;
   expiration_date: string | null;
+  observations: string | null;
   status: string;
   created_at: string;
   document_types: {
@@ -86,6 +91,10 @@ export default function EmployeeDetails() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [docToDelete, setDocToDelete] = useState<string | null>(null);
   const [deletingDocs, setDeletingDocs] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedDocForView, setSelectedDocForView] = useState<{ filePath: string; fileName: string } | null>(null);
+  const [selectedDocForEdit, setSelectedDocForEdit] = useState<Document | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -394,6 +403,22 @@ export default function EmployeeDetails() {
         }
       />
 
+      {selectedDocForView && (
+        <DocumentViewer
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          filePath={selectedDocForView.filePath}
+          fileName={selectedDocForView.fileName}
+        />
+      )}
+
+      <DocumentEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        document={selectedDocForEdit}
+        onSave={fetchDocuments}
+      />
+
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => navigate("/employees")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -668,35 +693,53 @@ export default function EmployeeDetails() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => navigate(`/documents/${doc.id}/edit`)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedDocForView({ filePath: doc.file_path, fileName: doc.file_name });
+                              setViewerOpen(true);
+                            }}
+                            disabled={!doc.file_path}
+                            title="Visualizar"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => downloadDocument(doc.file_path, doc.file_name)}
                             disabled={!doc.file_path}
+                            title="Download"
                           >
                             <Download className="w-4 h-4" />
                           </Button>
                           {isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => {
-                                setDocToDelete(doc.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedDocForEdit(doc);
+                                  setEditDialogOpen(true);
+                                }}
+                                title="Editar"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  setDocToDelete(doc.id);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>

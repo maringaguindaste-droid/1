@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, File } from "lucide-react";
+import { Loader2, Upload, File, Camera } from "lucide-react";
 import { formatDate } from "@/lib/formatters";
+import { DocumentScannerForForm } from "@/components/DocumentScannerForForm";
 
 type DocumentFormData = {
   document_type_id: string;
@@ -36,6 +37,7 @@ const DocumentForm = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>("");
+  const [scannerOpen, setScannerOpen] = useState(false);
   const { register, handleSubmit, setValue, watch } = useForm<DocumentFormData>();
 
   const isEditMode = !!id;
@@ -133,6 +135,25 @@ const DocumentForm = () => {
     }
   };
 
+  const handleScanComplete = (data: {
+    documentType?: string;
+    expirationDate?: string;
+    fileBase64: string;
+    fileName: string;
+    file: File;
+  }) => {
+    if (data.documentType) {
+      setValue("document_type_id", data.documentType);
+    }
+    if (data.expirationDate) {
+      setValue("expiration_date", data.expirationDate);
+    }
+    setSelectedFile(data.file);
+    if (data.fileBase64.startsWith('data:image')) {
+      setPreviewUrl(data.fileBase64);
+    }
+  };
+
   const onSubmit = async (data: DocumentFormData) => {
     try {
       setLoading(true);
@@ -212,12 +233,29 @@ const DocumentForm = () => {
 
   return (
     <div className="container mx-auto py-6">
+      <DocumentScannerForForm
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScanComplete={handleScanComplete}
+        documentTypes={documentTypes}
+      />
+
       <Card>
         <CardHeader>
-          <CardTitle>{isEditMode ? "Editar Documento" : "Novo Documento"}</CardTitle>
-          <CardDescription>
-            Preencha os dados e faça o upload do documento
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{isEditMode ? "Editar Documento" : "Novo Documento"}</CardTitle>
+              <CardDescription>
+                Preencha os dados e faça o upload do documento
+              </CardDescription>
+            </div>
+            {!isEditMode && (
+              <Button variant="outline" onClick={() => setScannerOpen(true)}>
+                <Camera className="w-4 h-4 mr-2" />
+                Escanear com IA
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
