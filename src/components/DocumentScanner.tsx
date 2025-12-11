@@ -14,6 +14,19 @@ interface ScannedData {
   filiation?: string | null;
   nationality?: string | null;
   naturalness?: string | null;
+  cep?: string | null;
+  municipality?: string | null;
+  neighborhood?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  position?: string | null;
+  admission_date?: string | null;
+  validation_date?: string | null;
+  company_name?: string | null;
+  company_cnpj?: string | null;
+  responsible_function?: string | null;
 }
 
 interface ScanResult {

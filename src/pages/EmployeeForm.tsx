@@ -47,6 +47,17 @@ interface Company {
   cnpj: string | null;
 }
 
+const parseDateToISO = (value?: string | null) => {
+  if (!value) return "";
+  // Se vier no formato dd/mm/aaaa converte para yyyy-mm-dd
+  const slashMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, d, m, y] = slashMatch;
+    return `${y}-${m}-${d}`;
+  }
+  return value;
+};
+
 const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -66,6 +77,19 @@ const EmployeeForm = () => {
     cpf?: string | null;
     rg?: string | null;
     birth_date?: string | null;
+    cep?: string | null;
+    municipality?: string | null;
+    neighborhood?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    mobile?: string | null;
+    email?: string | null;
+    position?: string | null;
+    admission_date?: string | null;
+    validation_date?: string | null;
+    company_name?: string | null;
+    company_cnpj?: string | null;
+    responsible_function?: string | null;
   }) => {
     const fieldsUpdated: string[] = [];
     
@@ -83,8 +107,79 @@ const EmployeeForm = () => {
       fieldsUpdated.push("rg");
     }
     if (data.birth_date) {
-      setValue("birth_date", data.birth_date);
+      setValue("birth_date", parseDateToISO(data.birth_date));
       fieldsUpdated.push("birth_date");
+    }
+    if (data.cep) {
+      const formattedCEP = formatCEP(data.cep);
+      setValue("cep", formattedCEP);
+      fieldsUpdated.push("cep");
+      if (formattedCEP.replace(/[^\d]/g, '').length === 8) {
+        fetchAddressByCEP(formattedCEP);
+      }
+    }
+    if (data.municipality) {
+      setValue("municipality", data.municipality);
+      fieldsUpdated.push("municipality");
+    }
+    if (data.neighborhood) {
+      setValue("neighborhood", data.neighborhood);
+      fieldsUpdated.push("neighborhood");
+    }
+    if (data.address) {
+      setValue("address", data.address);
+      fieldsUpdated.push("address");
+    }
+    if (data.phone) {
+      const formatted = formatPhone(data.phone);
+      setValue("phone", formatted);
+      fieldsUpdated.push("phone");
+    }
+    if (data.mobile) {
+      const formatted = formatPhone(data.mobile);
+      setValue("mobile", formatted);
+      fieldsUpdated.push("mobile");
+    }
+    if (data.email) {
+      setValue("email", data.email);
+      fieldsUpdated.push("email");
+    }
+    if (data.position) {
+      setValue("position", data.position);
+      fieldsUpdated.push("position");
+    }
+    if (data.admission_date) {
+      setValue("admission_date", parseDateToISO(data.admission_date));
+      fieldsUpdated.push("admission_date");
+    }
+    if (data.validation_date) {
+      setValue("validation_date", parseDateToISO(data.validation_date));
+      fieldsUpdated.push("validation_date");
+    }
+    if (data.responsible_function) {
+      setValue("responsible_function", data.responsible_function);
+      fieldsUpdated.push("responsible_function");
+    }
+    if (data.company_name) {
+      setValue("company_name", data.company_name);
+      fieldsUpdated.push("company_name");
+    }
+    if (data.company_cnpj) {
+      setValue("company_cnpj", data.company_cnpj);
+      fieldsUpdated.push("company_cnpj");
+    }
+    // Tentar mapear empresa por CNPJ ou nome
+    if ((data.company_cnpj || data.company_name) && allCompanies.length > 0) {
+      const matchedCompany = allCompanies.find((c) =>
+        (data.company_cnpj && c.cnpj === data.company_cnpj) ||
+        (data.company_name && c.name.toLowerCase().includes(data.company_name.toLowerCase()))
+      );
+      if (matchedCompany) {
+        setValue("company_id", matchedCompany.id);
+        setValue("company_name", matchedCompany.name);
+        setValue("company_cnpj", matchedCompany.cnpj || "");
+        fieldsUpdated.push("company_id");
+      }
     }
     
     setHighlightedFields(fieldsUpdated);
