@@ -7,6 +7,7 @@ import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 import { CompanySelector } from "./CompanySelector";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { MobileBottomNav } from "./MobileBottomNav";
 
 interface LayoutProps {
   children: ReactNode;
@@ -168,9 +169,12 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-4 md:py-6">
+      <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-6">
         {children}
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
     </div>
   );
 }

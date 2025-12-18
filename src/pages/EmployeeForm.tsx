@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { validateCPF, formatCPF, formatPhone, formatCEP } from "@/lib/validations";
-import { Loader2, Building2, Camera } from "lucide-react";
+import { Loader2, Building2, Camera, FileText } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import DocumentScanner from "@/components/DocumentScanner";
+import { DocumentPackScannerInline } from "@/components/DocumentPackScannerInline";
 
 type EmployeeFormData = {
   full_name: string;
@@ -59,7 +60,12 @@ const EmployeeForm = () => {
   const [systemPassword, setSystemPassword] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [highlightedFields, setHighlightedFields] = useState<string[]>([]);
+  const [pendingDocuments, setPendingDocuments] = useState<any[]>([]);
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<EmployeeFormData>();
+
+  const handleDocumentsScanned = useCallback((documents: any[]) => {
+    setPendingDocuments(documents);
+  }, []);
 
   const handleScannedData = (data: {
     full_name?: string | null;
@@ -350,16 +356,79 @@ const EmployeeForm = () => {
 
         if (error) throw error;
 
+        // Save pending documents if any
+        if (newEmployee?.id && pendingDocuments.length > 0) {
+          for (const doc of pendingDocuments) {
+            try {
+              // Sanitize file name
+              const sanitizedName = doc.fileName
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, '_')
+                .replace(/[^a-zA-Z0-9._-]/g, '');
+              
+              const filePath = `${newEmployee.id}/${Date.now()}_${sanitizedName}`;
+              
+              // Convert base64 to blob
+              const base64Data = doc.fileData.split(',')[1] || doc.fileData;
+              const byteCharacters = atob(base64Data);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: doc.mimeType || 'application/octet-stream' });
+
+              // Upload file
+              const { error: uploadError } = await supabase.storage
+                .from('employee-documents')
+                .upload(filePath, blob, { contentType: doc.mimeType });
+
+              if (uploadError) {
+                console.error('Upload error:', uploadError);
+                continue;
+              }
+
+              // Check if should update existing or create new
+              if (doc.isUpdate && doc.existingDocumentId) {
+                await supabase
+                  .from('documents')
+                  .update({
+                    file_path: filePath,
+                    file_name: doc.fileName,
+                    expiration_date: doc.expirationDate,
+                    status: 'pending',
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', doc.existingDocumentId);
+              } else {
+                await supabase
+                  .from('documents')
+                  .insert({
+                    employee_id: newEmployee.id,
+                    document_type_id: doc.documentTypeId,
+                    file_path: filePath,
+                    file_name: doc.fileName,
+                    expiration_date: doc.expirationDate,
+                    status: 'pending'
+                  });
+              }
+            } catch (docError) {
+              console.error('Error saving document:', docError);
+            }
+          }
+        }
+
+        const docCount = pendingDocuments.length;
         toast({
           title: "Sucesso",
           description: createSystemAccess 
             ? "Funcionário cadastrado com acesso ao sistema!" 
-            : "Funcionário cadastrado com sucesso!",
+            : docCount > 0 
+              ? `Funcionário cadastrado com ${docCount} documento(s)!`
+              : "Funcionário cadastrado com sucesso!",
         });
 
-        if (newEmployee?.id) {
-          redirectTo = `/documents/new?employeeId=${newEmployee.id}`;
-        }
+        redirectTo = `/employees/${newEmployee?.id}/view`;
       }
 
       navigate(redirectTo);
@@ -395,8 +464,9 @@ const EmployeeForm = () => {
           <Tabs defaultValue="dados" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="dados">Dados do Funcionário</TabsTrigger>
-              <TabsTrigger value="documentos" disabled={!isEditMode}>
-                Documentos
+              <TabsTrigger value="documentos">
+                <FileText className="w-4 h-4 mr-2" />
+                Documentos {pendingDocuments.length > 0 && `(${pendingDocuments.length})`}
               </TabsTrigger>
             </TabsList>
 
@@ -736,11 +806,27 @@ const EmployeeForm = () => {
             </TabsContent>
 
             <TabsContent value="documentos">
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  Salve o funcionário primeiro para adicionar documentos
-                </p>
-              </div>
+              {isEditMode ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    Use a página de detalhes do funcionário para gerenciar documentos
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Adicione os documentos do funcionário. Eles serão salvos junto com o cadastro.
+                  </p>
+                  <DocumentPackScannerInline
+                    onDocumentsScanned={handleDocumentsScanned}
+                  />
+                  {pendingDocuments.length > 0 && (
+                    <p className="text-sm text-green-600 dark:text-green-400">
+                      ✓ {pendingDocuments.length} documento(s) prontos para salvar
+                    </p>
+                  )}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

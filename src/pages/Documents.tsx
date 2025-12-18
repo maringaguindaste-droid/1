@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload, Eye, Edit } from "lucide-react";
+import { FileText, Calendar, CheckCircle, XCircle, Clock, Download, AlertCircle, Plus, Trash2, Loader2, Upload, Eye, Edit, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -17,6 +17,7 @@ import { DocumentsByEmployee } from "@/components/DocumentsByEmployee";
 import { DocumentPackScanner } from "@/components/DocumentPackScanner";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { DocumentEditDialog } from "@/components/DocumentEditDialog";
+import { DocumentAIUpdateScanner } from "@/components/DocumentAIUpdateScanner";
 
 interface Document {
   id: string;
@@ -56,8 +57,10 @@ export default function Documents() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [aiUpdateScannerOpen, setAiUpdateScannerOpen] = useState(false);
   const [selectedDocForView, setSelectedDocForView] = useState<{ filePath: string; fileName: string } | null>(null);
   const [selectedDocForEdit, setSelectedDocForEdit] = useState<Document | null>(null);
+  const [selectedDocForAIUpdate, setSelectedDocForAIUpdate] = useState<Document | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -333,6 +336,17 @@ export default function Documents() {
         onSave={fetchDocuments}
       />
 
+      {selectedDocForAIUpdate && (
+        <DocumentAIUpdateScanner
+          open={aiUpdateScannerOpen}
+          onOpenChange={setAiUpdateScannerOpen}
+          documentId={selectedDocForAIUpdate.id}
+          employeeId={selectedDocForAIUpdate.employee_id}
+          currentDocumentTypeId={selectedDocForAIUpdate.document_type_id}
+          onUpdate={fetchDocuments}
+        />
+      )}
+
       <DocumentPackScanner 
         open={scannerOpen} 
         onOpenChange={setScannerOpen}
@@ -522,6 +536,17 @@ export default function Documents() {
                       }}
                     >
                       <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedDocForAIUpdate(doc);
+                        setAiUpdateScannerOpen(true);
+                      }}
+                      title="Atualizar com IA"
+                    >
+                      <Camera className="w-4 h-4" />
                     </Button>
                     <Button
                       size="sm"
