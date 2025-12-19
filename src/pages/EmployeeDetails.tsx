@@ -41,6 +41,8 @@ import { ptBR } from "date-fns/locale";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { DocumentEditDialog } from "@/components/DocumentEditDialog";
+import { DocumentAIUpdateScanner } from "@/components/DocumentAIUpdateScanner";
+import { Camera, PenTool } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -93,8 +95,10 @@ export default function EmployeeDetails() {
   const [deletingDocs, setDeletingDocs] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [aiUpdateOpen, setAiUpdateOpen] = useState(false);
   const [selectedDocForView, setSelectedDocForView] = useState<{ filePath: string; fileName: string } | null>(null);
   const [selectedDocForEdit, setSelectedDocForEdit] = useState<Document | null>(null);
+  const [selectedDocForAIUpdate, setSelectedDocForAIUpdate] = useState<Document | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -341,6 +345,84 @@ export default function EmployeeDetails() {
     return daysUntilExpiration <= 30 && daysUntilExpiration > 0;
   };
 
+  // Parse signature info from observations field
+  const getSignatureStatus = (observations: string | null) => {
+    if (!observations) return null;
+    
+    // Match new format: "Assinaturas: X/3 (Empresa ✓, Instrutor ✗, Funcionário ✓)"
+    const match = observations.match(/Assinaturas:\s*(\d)\/3/);
+    if (match) {
+      const count = parseInt(match[1]);
+      const hasCompany = observations.includes('Empresa ✓');
+      const hasInstructor = observations.includes('Instrutor ✓');
+      const hasEmployee = observations.includes('Funcionário ✓');
+      
+      return { count, hasCompany, hasInstructor, hasEmployee };
+    }
+    
+    // Legacy format check
+    if (observations.toLowerCase().includes('completamente assinado') || 
+        observations.includes('3 assinaturas')) {
+      return { count: 3, hasCompany: true, hasInstructor: true, hasEmployee: true };
+    }
+    
+    return null;
+  };
+
+  // Check if document is NR type (requires signature tracking)
+  const isNRDocument = (doc: Document) => {
+    const code = doc.document_types?.code || '';
+    const name = doc.document_types?.name || '';
+    return code.toUpperCase().startsWith('NR') || 
+           code.toUpperCase() === 'ASO' ||
+           name.toUpperCase().includes('NR') ||
+           name.toUpperCase().includes('ASO');
+  };
+
+  const renderSignatureBadge = (doc: Document) => {
+    if (!isNRDocument(doc)) return null;
+    
+    const sigStatus = getSignatureStatus(doc.observations);
+    
+    if (!sigStatus) {
+      return (
+        <Badge variant="outline" className="gap-1 text-xs border-muted-foreground/30" title="Assinaturas não verificadas">
+          <PenTool className="w-3 h-3" />
+          ?/3
+        </Badge>
+      );
+    }
+    
+    const tooltip = [
+      `Empresa: ${sigStatus.hasCompany ? '✓' : '✗'}`,
+      `Instrutor: ${sigStatus.hasInstructor ? '✓' : '✗'}`,
+      `Funcionário: ${sigStatus.hasEmployee ? '✓' : '✗'}`
+    ].join(' | ');
+    
+    if (sigStatus.count === 3) {
+      return (
+        <Badge className="gap-1 text-xs bg-green-600 hover:bg-green-600" title={tooltip}>
+          <PenTool className="w-3 h-3" />
+          3/3
+        </Badge>
+      );
+    } else if (sigStatus.count > 0) {
+      return (
+        <Badge variant="secondary" className="gap-1 text-xs bg-amber-500/20 text-amber-700 dark:text-amber-300" title={tooltip}>
+          <PenTool className="w-3 h-3" />
+          {sigStatus.count}/3
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="destructive" className="gap-1 text-xs" title="Documento sem assinaturas">
+          <PenTool className="w-3 h-3" />
+          0/3
+        </Badge>
+      );
+    }
+  };
+
   const isExpired = (date: string | null) => {
     if (!date) return false;
     return new Date(date) < new Date();
@@ -418,6 +500,17 @@ export default function EmployeeDetails() {
         document={selectedDocForEdit}
         onSave={fetchDocuments}
       />
+
+      {selectedDocForAIUpdate && (
+        <DocumentAIUpdateScanner
+          open={aiUpdateOpen}
+          onOpenChange={setAiUpdateOpen}
+          documentId={selectedDocForAIUpdate.id}
+          employeeId={id || ""}
+          currentDocumentTypeId={selectedDocForAIUpdate.document_type_id}
+          onUpdate={fetchDocuments}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => navigate("/employees")}>
@@ -649,6 +742,7 @@ export default function EmployeeDetails() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Arquivo</TableHead>
                     <TableHead>Validade</TableHead>
+                    <TableHead>Assinaturas</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Enviado em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -686,6 +780,9 @@ export default function EmployeeDetails() {
                         </span>
                       </TableCell>
                       <TableCell>
+                        {renderSignatureBadge(doc)}
+                      </TableCell>
+                      <TableCell>
                         {getDocStatusBadge(doc.status)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -716,6 +813,18 @@ export default function EmployeeDetails() {
                           </Button>
                           {isAdmin && (
                             <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedDocForAIUpdate(doc);
+                                  setAiUpdateOpen(true);
+                                }}
+                                title="Atualizar com IA"
+                                className="text-primary"
+                              >
+                                <Camera className="w-4 h-4" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"

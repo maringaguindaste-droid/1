@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,18 +11,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Send, Trash2, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, Send, Trash2, CheckCheck, Loader2, FileEdit, User, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { EmptyState } from "@/components/EmptyState";
 
 export default function Notifications() {
+  const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { notifications, loading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const [employees, setEmployees] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
+
+  const handleUpdateDocument = (employeeId: string | null, documentId: string | null) => {
+    if (employeeId) {
+      navigate(`/employees/${employeeId}/view`);
+    }
+  };
 
   const fetchEmployees = async () => {
     setLoadingEmployees(true);
@@ -259,7 +267,7 @@ export default function Notifications() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Badge className={getTypeColor(notification.type)}>
                               {notification.type}
                             </Badge>
@@ -267,7 +275,39 @@ export default function Notifications() {
                               {format(new Date(notification.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                             </span>
                           </div>
+                          
+                          {/* Show employee and document info */}
+                          {(notification.employee_name || notification.document_type_name) && (
+                            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                              {notification.employee_name && (
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {notification.employee_name}
+                                </span>
+                              )}
+                              {notification.document_type_name && (
+                                <span className="flex items-center gap-1">
+                                  <FileText className="w-3 h-3" />
+                                  {notification.document_type_name}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
                           <p className="text-sm">{notification.message}</p>
+                          
+                          {/* Update document button */}
+                          {notification.employee_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={() => handleUpdateDocument(notification.employee_id, notification.document_id)}
+                            >
+                              <FileEdit className="w-4 h-4 mr-2" />
+                              Atualizar Documento
+                            </Button>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           {!notification.read && (

@@ -14,4 +14,3 @@ SET company_id = (
   LIMIT 1
 )
 WHERE n.company_id IS NULL;
-

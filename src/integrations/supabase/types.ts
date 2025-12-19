@@ -368,7 +368,10 @@ export type Database = {
       }
       notifications: {
         Row: {
+          company_id: string | null
           created_at: string | null
+          document_id: string | null
+          employee_id: string | null
           id: string
           message: string
           read: boolean | null
@@ -376,7 +379,10 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          company_id?: string | null
           created_at?: string | null
+          document_id?: string | null
+          employee_id?: string | null
           id?: string
           message: string
           read?: boolean | null
@@ -384,14 +390,39 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          company_id?: string | null
           created_at?: string | null
+          document_id?: string | null
+          employee_id?: string | null
           id?: string
           message?: string
           read?: boolean | null
           type?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "notifications_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {

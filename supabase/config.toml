@@ -3,8 +3,14 @@ project_id = "kksfxklekojlxmjaijir"
 [functions.check-expiring-documents]
 verify_jwt = false
 
+[functions.rescan-signatures]
+verify_jwt = false
+
 [functions.scan-document]
 verify_jwt = false
 
 [functions.scan-document-pack]
+verify_jwt = false
+
+[functions.send-whatsapp]
 verify_jwt = false

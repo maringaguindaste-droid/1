@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { useCompany } from "@/contexts/CompanyContext";
 
-interface Notification {
+export interface Notification {
   id: string;
   type: string;
   message: string;
   read: boolean;
   created_at: string;
+  company_id: string | null;
+  document_id: string | null;
+  employee_id: string | null;
+  employee_name?: string | null;
+  document_type_name?: string | null;
 }
 
 export const useNotifications = () => {
   const { user } = useAuth();
+  const { selectedCompany } = useCompany();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -45,24 +52,50 @@ export const useNotifications = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, selectedCompany]);
 
   const fetchNotifications = async () => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("notifications")
-        .select("*")
+        .select(`
+          *,
+          employees:employee_id(full_name),
+          documents:document_id(
+            document_types:document_type_id(name)
+          )
+        `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50);
 
+      // Filter by selected company if one is selected
+      if (selectedCompany) {
+        query = query.or(`company_id.eq.${selectedCompany.id},company_id.is.null`);
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
 
       if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.read).length);
+        // Map to include employee name and document type
+        const mappedNotifications: Notification[] = data.map((n: any) => ({
+          id: n.id,
+          type: n.type,
+          message: n.message,
+          read: n.read,
+          created_at: n.created_at,
+          company_id: n.company_id,
+          document_id: n.document_id,
+          employee_id: n.employee_id,
+          employee_name: n.employees?.full_name || null,
+          document_type_name: n.documents?.document_types?.name || null,
+        }));
+        setNotifications(mappedNotifications);
+        setUnreadCount(mappedNotifications.filter(n => !n.read).length);
       }
     } catch (error) {
       console.error("Error fetching notifications:", error);
@@ -89,11 +122,18 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      let query = supabase
         .from("notifications")
         .update({ read: true })
         .eq("user_id", user.id)
         .eq("read", false);
+
+      // Only mark as read for selected company
+      if (selectedCompany) {
+        query = query.or(`company_id.eq.${selectedCompany.id},company_id.is.null`);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
       await fetchNotifications();

@@ -4,14 +4,26 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, Loader2, FileCheck, AlertCircle, X, Calendar } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Camera, Upload, Loader2, FileCheck, AlertCircle, X, Calendar, PenTool, CheckCircle, AlertTriangle } from "lucide-react";
+
+interface SignatureInfo {
+  count: number;
+  has_employee_signature: boolean;
+  has_instructor_signature: boolean;
+  has_responsible_signature: boolean;
+  is_fully_signed: boolean;
+  observations: string;
+}
 
 interface ScanResult {
   success: boolean;
   document_type?: string;
+  document_type_name?: string;
   expiration_date?: string | null;
   emission_date?: string | null;
   confidence?: number;
+  signatures?: SignatureInfo;
   error?: string;
 }
 
@@ -24,6 +36,7 @@ interface DocumentScannerForFormProps {
     fileBase64: string;
     fileName: string;
     file: File;
+    signatures?: SignatureInfo;
   }) => void;
   documentTypes: { id: string; code: string; name: string; default_validity_years?: number | null }[];
 }
@@ -64,20 +77,36 @@ export function DocumentScannerForForm({
   });
 
   const findDocumentType = (identifiedType: string) => {
+    if (!identifiedType) return null;
     const normalizedType = identifiedType.toUpperCase().trim();
     
     // Try exact code match
     let match = documentTypes.find(dt => dt.code.toUpperCase() === normalizedType);
     if (match) return match;
 
-    // Try NR code match
+    // Try NR code match (NR35, NR-35, NR 35)
     const nrMatch = normalizedType.match(/NR\s*-?\s*(\d+)/i);
     if (nrMatch) {
-      const nrCode = `NR${nrMatch[1]}`;
+      const nrNumber = nrMatch[1];
+      match = documentTypes.find(dt => {
+        const dtCode = dt.code.toUpperCase();
+        const dtName = dt.name.toUpperCase();
+        return dtCode === `NR${nrNumber}` || 
+               dtCode === `NR-${nrNumber}` ||
+               dtCode.includes(nrNumber) ||
+               dtName.includes(`NR-${nrNumber}`) ||
+               dtName.includes(`NR ${nrNumber}`) ||
+               dtName.includes(`NR${nrNumber}`);
+      });
+      if (match) return match;
+    }
+
+    // Try ASO match
+    if (normalizedType.includes('ASO') || normalizedType.includes('ATESTADO') || normalizedType.includes('SAUDE')) {
       match = documentTypes.find(dt => 
-        dt.code.toUpperCase() === nrCode || 
-        dt.code.toUpperCase().includes(nrCode) ||
-        dt.name.toUpperCase().includes(nrCode)
+        dt.code.toUpperCase().includes('ASO') || 
+        dt.name.toUpperCase().includes('ASO') ||
+        dt.name.toUpperCase().includes('ATESTADO')
       );
       if (match) return match;
     }
@@ -85,7 +114,8 @@ export function DocumentScannerForForm({
     // Try name match
     match = documentTypes.find(dt => 
       dt.name.toUpperCase().includes(normalizedType) ||
-      normalizedType.includes(dt.name.toUpperCase())
+      normalizedType.includes(dt.name.toUpperCase()) ||
+      normalizedType.includes(dt.code.toUpperCase())
     );
     
     return match;
@@ -114,12 +144,20 @@ export function DocumentScannerForForm({
 
       if (error) throw new Error(error.message);
 
+      console.log('Scan response:', data);
+
+      if (!data.success) {
+        throw new Error(data.error || 'Falha ao processar documento');
+      }
+
       const result: ScanResult = {
         success: true,
         document_type: data.document_type,
+        document_type_name: data.document_type_name,
         expiration_date: data.expiration_date,
         emission_date: data.emission_date,
-        confidence: data.confidence
+        confidence: data.confidence,
+        signatures: data.signatures
       };
 
       // If we have document type, try to match it
@@ -140,9 +178,15 @@ export function DocumentScannerForForm({
 
       setScanResult(result);
       
+      const signatureStatus = result.signatures?.is_fully_signed 
+        ? '✓ Documento assinado' 
+        : result.signatures?.count 
+          ? `${result.signatures.count} assinatura(s)` 
+          : 'Sem assinaturas';
+      
       toast({
         title: "Documento analisado!",
-        description: `Confiança: ${Math.round((data.confidence || 0) * 100)}%`,
+        description: `Confiança: ${Math.round((data.confidence || 0) * 100)}% | ${signatureStatus}`,
       });
     } catch (error: any) {
       console.error('Erro no scanner:', error);
@@ -165,7 +209,8 @@ export function DocumentScannerForForm({
       expirationDate: scanResult?.expiration_date || undefined,
       fileBase64: selectedImage,
       fileName: selectedFile.name,
-      file: selectedFile
+      file: selectedFile,
+      signatures: scanResult?.signatures
     });
     
     handleClose();
@@ -186,6 +231,57 @@ export function DocumentScannerForForm({
     ? documentTypes.find(dt => dt.id === scanResult.document_type)
     : null;
 
+  const renderSignatureStatus = () => {
+    if (!scanResult?.signatures) return null;
+
+    const { count, is_fully_signed, has_employee_signature, has_instructor_signature, has_responsible_signature, observations } = scanResult.signatures;
+
+    return (
+      <div className="mt-3 p-3 rounded-lg bg-muted/50 space-y-2">
+        <div className="flex items-center gap-2 font-medium text-sm">
+          <PenTool className="w-4 h-4" />
+          Verificação de Assinaturas
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {is_fully_signed ? (
+            <Badge variant="default" className="gap-1 bg-green-600">
+              <CheckCircle className="w-3 h-3" />
+              Documento Completo ({count} assinatura{count !== 1 ? 's' : ''})
+            </Badge>
+          ) : count > 0 ? (
+            <Badge variant="secondary" className="gap-1 bg-amber-500/20 text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="w-3 h-3" />
+              Parcial ({count} assinatura{count !== 1 ? 's' : ''})
+            </Badge>
+          ) : (
+            <Badge variant="destructive" className="gap-1">
+              <AlertCircle className="w-3 h-3" />
+              Sem Assinaturas
+            </Badge>
+          )}
+        </div>
+        
+        <div className="text-xs space-y-1 text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span className={has_employee_signature ? 'text-green-600' : 'text-muted-foreground'}>
+              {has_employee_signature ? '✓' : '○'} Funcionário
+            </span>
+            <span className={has_instructor_signature ? 'text-green-600' : 'text-muted-foreground'}>
+              {has_instructor_signature ? '✓' : '○'} Instrutor
+            </span>
+            <span className={has_responsible_signature ? 'text-green-600' : 'text-muted-foreground'}>
+              {has_responsible_signature ? '✓' : '○'} Responsável
+            </span>
+          </div>
+          {observations && (
+            <p className="italic">{observations}</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg">
@@ -195,7 +291,7 @@ export function DocumentScannerForForm({
             Escanear Documento com IA
           </DialogTitle>
           <DialogDescription>
-            Faça upload de um documento para identificar automaticamente o tipo e data de validade
+            Faça upload de um documento para identificar automaticamente o tipo, data e assinaturas
           </DialogDescription>
         </DialogHeader>
 
@@ -248,10 +344,22 @@ export function DocumentScannerForForm({
                     Documento analisado!
                   </div>
                   <div className="text-sm space-y-1">
-                    {matchedDocType && (
+                    {matchedDocType ? (
                       <p>
                         <span className="text-muted-foreground">Tipo:</span>{" "}
                         {matchedDocType.code} - {matchedDocType.name}
+                      </p>
+                    ) : scanResult.document_type_name && (
+                      <p>
+                        <span className="text-muted-foreground">Tipo identificado:</span>{" "}
+                        {scanResult.document_type} - {scanResult.document_type_name}
+                      </p>
+                    )}
+                    {scanResult.emission_date && (
+                      <p className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Emissão:</span>{" "}
+                        {new Date(scanResult.emission_date).toLocaleDateString('pt-BR')}
                       </p>
                     )}
                     {scanResult.expiration_date && (
@@ -262,6 +370,8 @@ export function DocumentScannerForForm({
                       </p>
                     )}
                   </div>
+                  
+                  {renderSignatureStatus()}
                 </div>
               )}
 

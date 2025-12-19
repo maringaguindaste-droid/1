@@ -396,6 +396,7 @@ const EmployeeForm = () => {
                     file_path: filePath,
                     file_name: doc.fileName,
                     expiration_date: doc.expirationDate,
+                    observations: doc.observations || null,
                     status: 'pending',
                     updated_at: new Date().toISOString()
                   })
@@ -409,6 +410,7 @@ const EmployeeForm = () => {
                     file_path: filePath,
                     file_name: doc.fileName,
                     expiration_date: doc.expirationDate,
+                    observations: doc.observations || null,
                     status: 'pending'
                   });
               }

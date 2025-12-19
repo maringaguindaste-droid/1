@@ -7,13 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Loader2, Upload, File, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Edit, Loader2, Upload, File, RefreshCw, Camera, CheckCircle2, AlertTriangle, PenTool, User, UserCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useDropzone } from "react-dropzone";
 
 interface DocumentType {
   id: string;
   code: string;
   name: string;
+  default_validity_years: number | null;
 }
 
 interface Document {
@@ -24,6 +27,22 @@ interface Document {
   expiration_date: string | null;
   observations: string | null;
   status: string;
+  employee_id?: string;
+}
+
+interface SignatureInfo {
+  count: number;
+  employee_signed: boolean;
+  instructor_signed: boolean;
+  responsible_signed: boolean;
+  fully_signed: boolean;
+}
+
+interface ScanResult {
+  document_type?: string;
+  emission_date?: string;
+  expiration_date?: string;
+  signatures?: SignatureInfo;
 }
 
 interface DocumentEditDialogProps {
@@ -39,6 +58,9 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     document_type_id: "",
@@ -58,13 +80,17 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
           status: document.status || "pending"
         });
       }
+      // Reset scan state
+      setScanResult(null);
+      setPreviewImage(null);
+      setSelectedFile(null);
     }
   }, [open, document]);
 
   const fetchDocumentTypes = async () => {
     const { data } = await supabase
       .from("document_types")
-      .select("id, code, name")
+      .select("id, code, name, default_validity_years")
       .eq("is_active", true)
       .order("code");
     
@@ -78,11 +104,125 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
       .replace(/[^a-zA-Z0-9_.-]/g, '');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const onDrop = async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
     if (file) {
       setSelectedFile(file);
+      setScanResult(null);
+      
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewImage(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setPreviewImage(null);
+      }
     }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg'],
+      'application/pdf': ['.pdf']
+    },
+    maxSize: 10 * 1024 * 1024,
+    multiple: false
+  });
+
+  const handleScan = async () => {
+    if (!previewImage && !selectedFile) {
+      toast.error("Selecione um arquivo primeiro");
+      return;
+    }
+
+    setScanning(true);
+    try {
+      let imageBase64: string;
+      
+      // Send full base64 with data URI prefix for proper handling
+      if (previewImage) {
+        imageBase64 = previewImage;
+      } else if (selectedFile) {
+        imageBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.readAsDataURL(selectedFile);
+        });
+      } else {
+        throw new Error("No file selected");
+      }
+      
+      const { data, error } = await supabase.functions.invoke('scan-document', {
+        body: { imageBase64, mode: 'document_form' }
+      });
+
+      if (error) throw error;
+
+      console.log("Scan result:", data);
+      setScanResult(data);
+
+      // Auto-fill form with scan results
+      if (data.document_type) {
+        const foundType = findDocumentType(data.document_type);
+        if (foundType) {
+          setFormData(prev => ({ ...prev, document_type_id: foundType.id }));
+        }
+      }
+
+      // Calculate or use expiration date
+      let expDate = data.expiration_date;
+      if (!expDate && data.emission_date) {
+        const foundType = data.document_type ? findDocumentType(data.document_type) : null;
+        const docType = foundType || documentTypes.find(dt => dt.id === formData.document_type_id);
+        if (docType?.default_validity_years) {
+          expDate = calculateExpirationDate(data.emission_date, docType.default_validity_years);
+        }
+      }
+      
+      if (expDate) {
+        setFormData(prev => ({ ...prev, expiration_date: expDate }));
+      }
+
+      toast.success("Documento analisado com sucesso!");
+    } catch (error: any) {
+      console.error("Scan error:", error);
+      toast.error("Erro ao analisar documento");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const findDocumentType = (scannedType: string): DocumentType | null => {
+    if (!scannedType) return null;
+    const normalizedScanned = scannedType.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    let match = documentTypes.find(dt => 
+      dt.code.toUpperCase().replace(/[^A-Z0-9]/g, '') === normalizedScanned
+    );
+    if (match) return match;
+
+    const nrMatch = normalizedScanned.match(/NR(\d+)/);
+    if (nrMatch) {
+      match = documentTypes.find(dt => 
+        dt.code.toUpperCase().includes(`NR${nrMatch[1]}`) ||
+        dt.name.toUpperCase().includes(`NR${nrMatch[1]}`)
+      );
+      if (match) return match;
+    }
+
+    return null;
+  };
+
+  const calculateExpirationDate = (emissionDate: string, validityYears: number): string => {
+    const date = new Date(emissionDate);
+    date.setFullYear(date.getFullYear() + validityYears);
+    date.setDate(date.getDate() - 1);
+    return date.toISOString().split('T')[0];
   };
 
   const handleSave = async () => {
@@ -98,7 +238,6 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
         updated_at: new Date().toISOString()
       };
 
-      // Admin can change status
       if (isAdmin && formData.status) {
         updateData.status = formData.status;
         if (formData.status === "approved" || formData.status === "rejected") {
@@ -107,16 +246,13 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
         }
       }
 
-      // Upload new file if selected
       if (selectedFile) {
         setUploading(true);
         
-        // Delete old file if exists
         if (document.file_path) {
           await supabase.storage.from('employee-documents').remove([document.file_path]);
         }
 
-        // Get employee_id from document path or query
         const { data: docData } = await supabase
           .from("documents")
           .select("employee_id")
@@ -154,6 +290,8 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
       onSave();
       onOpenChange(false);
       setSelectedFile(null);
+      setScanResult(null);
+      setPreviewImage(null);
     } catch (error: any) {
       toast.error("Erro ao atualizar documento");
       console.error(error);
@@ -163,16 +301,59 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
     }
   };
 
+  const renderSignatureStatus = () => {
+    if (!scanResult?.signatures) return null;
+    const sig = scanResult.signatures;
+
+    return (
+      <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <PenTool className="w-4 h-4 text-primary" />
+          <span className="font-medium text-sm">Assinaturas</span>
+          <Badge variant={sig.fully_signed ? "default" : "secondary"}>
+            {sig.count} assinatura(s)
+          </Badge>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={sig.employee_signed ? "default" : "outline"} className="text-xs">
+            <User className="w-3 h-3 mr-1" />
+            Funcionário {sig.employee_signed ? "✓" : "✗"}
+          </Badge>
+          <Badge variant={sig.instructor_signed ? "default" : "outline"} className="text-xs">
+            <UserCheck className="w-3 h-3 mr-1" />
+            Instrutor {sig.instructor_signed ? "✓" : "✗"}
+          </Badge>
+          <Badge variant={sig.responsible_signed ? "default" : "outline"} className="text-xs">
+            <UserCheck className="w-3 h-3 mr-1" />
+            Responsável {sig.responsible_signed ? "✓" : "✗"}
+          </Badge>
+        </div>
+        {sig.fully_signed && (
+          <div className="flex items-center gap-1 text-success text-sm">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Completamente assinado</span>
+          </div>
+        )}
+        {!sig.fully_signed && sig.count > 0 && (
+          <div className="flex items-center gap-1 text-warning text-sm">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Parcialmente assinado</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit className="w-5 h-5 text-primary" />
             Editar Documento
           </DialogTitle>
           <DialogDescription>
-            Atualize os dados do documento
+            Atualize os dados do documento ou escaneie um novo arquivo com IA
           </DialogDescription>
         </DialogHeader>
 
@@ -238,30 +419,72 @@ export function DocumentEditDialog({ open, onOpenChange, document, onSave }: Doc
           </div>
 
           <div className="space-y-2">
-            <Label>Atualizar Arquivo</Label>
-            <div className="flex items-center gap-2">
-              <label className="flex-1">
-                <div className="flex items-center justify-center w-full h-20 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                  {selectedFile ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <File className="w-5 h-5 text-primary" />
-                      <span className="truncate max-w-[200px]">{selectedFile.name}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <RefreshCw className="w-5 h-5" />
-                      <span>Clique para substituir arquivo</span>
-                    </div>
-                  )}
+            <Label>Atualizar Arquivo com IA</Label>
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                isDragActive ? "border-primary bg-primary/10" : "border-muted-foreground/30 hover:border-primary/50"
+              }`}
+            >
+              <input {...getInputProps()} />
+              {selectedFile ? (
+                <div className="flex flex-col items-center gap-2">
+                  <File className="w-8 h-8 text-primary" />
+                  <span className="text-sm truncate max-w-full">{selectedFile.name}</span>
                 </div>
-                <Input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  onChange={handleFileChange}
-                />
-              </label>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="w-8 h-8 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Arraste ou clique para selecionar novo arquivo
+                  </span>
+                </div>
+              )}
             </div>
+            
+            {selectedFile && (
+              <Button 
+                variant="outline" 
+                className="w-full mt-2" 
+                onClick={handleScan}
+                disabled={scanning}
+              >
+                {scanning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analisando...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 mr-2" />
+                    Escanear com IA
+                  </>
+                )}
+              </Button>
+            )}
+
+            {scanResult && (
+              <div className="p-3 bg-success/10 rounded-lg border border-success/30 space-y-2">
+                <div className="flex items-center gap-2 text-success text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="font-medium">Documento Analisado</span>
+                </div>
+                {scanResult.document_type && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Tipo:</span>{" "}
+                    <Badge variant="outline">{scanResult.document_type}</Badge>
+                  </div>
+                )}
+                {scanResult.emission_date && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Emissão:</span>{" "}
+                    {new Date(scanResult.emission_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </div>
+                )}
+                {renderSignatureStatus()}
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground">
               Arquivo atual: {document?.file_name || "Nenhum"}
             </p>

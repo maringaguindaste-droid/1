@@ -28,7 +28,7 @@ serve(async (req) => {
 
     for (const file of files) {
       try {
-        console.log(`Analisando arquivo: ${file.name}`);
+        console.log(`Analisando arquivo: ${file.fileName || file.name}`);
 
         const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -42,7 +42,7 @@ serve(async (req) => {
               {
                 role: 'system',
                 content: `Você é um especialista em análise de documentos corporativos brasileiros.
-Analise a imagem e identifique o tipo de documento e as datas relevantes.
+Analise a imagem e identifique o tipo de documento, as datas relevantes e VERIFIQUE AS ASSINATURAS.
 
 TIPOS DE DOCUMENTOS (use o código exato):
 - ASO: Atestado de Saúde Ocupacional
@@ -83,6 +83,22 @@ IMPORTANTE SOBRE DATAS:
 Para certificados de treinamento (NR10, NR35, etc), geralmente a data visível é a data do TREINAMENTO (emission_date).
 O sistema calculará a validade automaticamente baseado nos anos padrão.
 
+VERIFICAÇÃO DE ASSINATURAS (MUITO IMPORTANTE):
+Certificados NR geralmente têm 3 campos de assinatura:
+1. ASSINATURA DA EMPRESA/CONTRATANTE (esquerda ou primeiro campo) - assinatura do representante da empresa contratante
+2. ASSINATURA DO INSTRUTOR/TÉCNICO (centro ou segundo campo) - assinatura de quem ministrou o treinamento
+3. ASSINATURA DO FUNCIONÁRIO/TRABALHADOR (direita ou terceiro campo) - assinatura do participante do curso
+
+REGRAS PARA IDENTIFICAR ASSINATURAS:
+- Um campo está ASSINADO se contém: rabisco manuscrito, carimbo com assinatura, nome escrito à mão, ou assinatura digital
+- Um campo está VAZIO se: está em branco, tem apenas linha pontilhada, ou tem apenas o texto do label
+- Conte CADA CAMPO que tem uma assinatura real
+
+has_company_signature = se o campo da empresa/contratante está assinado
+has_instructor_signature = se o campo do instrutor/técnico está assinado  
+has_employee_signature = se o campo do funcionário/trabalhador está assinado
+is_fully_signed = se TODOS os 3 campos estão assinados
+
 RESPONDA APENAS COM JSON VÁLIDO, sem markdown:
 {
   "success": true,
@@ -91,7 +107,15 @@ RESPONDA APENAS COM JSON VÁLIDO, sem markdown:
   "expiration_date": "YYYY-MM-DD ou null",
   "emission_date": "YYYY-MM-DD ou null",
   "observations": "Observações relevantes",
-  "confidence": 0.0 a 1.0
+  "confidence": 0.0 a 1.0,
+  "signatures": {
+    "count": 0 | 1 | 2 | 3,
+    "has_company_signature": true | false,
+    "has_instructor_signature": true | false,
+    "has_employee_signature": true | false,
+    "is_fully_signed": true | false,
+    "details": "Empresa: ✓/✗ | Instrutor: ✓/✗ | Funcionário: ✓/✗"
+  }
 }
 
 Se não conseguir analisar: {"success": false, "error": "Motivo"}`
@@ -101,7 +125,7 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
                 content: [
                   {
                     type: 'text',
-                    text: 'Analise este documento e identifique: tipo do documento, data de emissão/realização e data de validade/vencimento (se houver).'
+                    text: 'Analise este documento e identifique: 1) tipo do documento, 2) data de emissão/realização, 3) data de validade/vencimento (se houver), 4) ASSINATURAS presentes (quantas existem e de quem são).'
                   },
                   {
                     type: 'image_url',
@@ -121,7 +145,7 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
           
           if (response.status === 429) {
             results.push({
-              fileName: file.name,
+              fileName: file.fileName || file.name,
               success: false,
               error: 'Limite de requisições excedido. Aguarde alguns segundos.'
             });
@@ -130,7 +154,7 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
           
           if (response.status === 402) {
             results.push({
-              fileName: file.name,
+              fileName: file.fileName || file.name,
               success: false,
               error: 'Créditos insuficientes.'
             });
@@ -143,11 +167,11 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
         
-        console.log('Resposta da IA para', file.name, ':', content);
+        console.log('Resposta da IA para', file.fileName || file.name, ':', content);
 
         if (!content) {
           results.push({
-            fileName: file.name,
+            fileName: file.fileName || file.name,
             success: false,
             error: 'Resposta vazia da IA'
           });
@@ -158,8 +182,30 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
           const cleanContent = content.replace(/```json\n?|\n?```/g, '').trim();
           const parsedResult = JSON.parse(cleanContent);
           
+          // Ensure signatures object exists with standardized fields
+          if (!parsedResult.signatures) {
+            parsedResult.signatures = {
+              count: 0,
+              has_company_signature: false,
+              has_instructor_signature: false,
+              has_employee_signature: false,
+              is_fully_signed: false,
+              details: 'Empresa: ✗ | Instrutor: ✗ | Funcionário: ✗'
+            };
+          } else {
+            // Normalize field names
+            if ('has_responsible_signature' in parsedResult.signatures && !('has_company_signature' in parsedResult.signatures)) {
+              parsedResult.signatures.has_company_signature = parsedResult.signatures.has_responsible_signature;
+            }
+            // Add details if missing
+            if (!parsedResult.signatures.details) {
+              const sig = parsedResult.signatures;
+              parsedResult.signatures.details = `Empresa: ${sig.has_company_signature ? '✓' : '✗'} | Instrutor: ${sig.has_instructor_signature ? '✓' : '✗'} | Funcionário: ${sig.has_employee_signature ? '✓' : '✗'}`;
+            }
+          }
+          
           results.push({
-            fileName: file.name,
+            fileName: file.fileName || file.name,
             fileBase64: file.base64,
             mimeType: file.mimeType,
             ...parsedResult
@@ -167,7 +213,7 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
         } catch (parseError) {
           console.error('Erro ao parsear JSON:', parseError);
           results.push({
-            fileName: file.name,
+            fileName: file.fileName || file.name,
             success: false,
             error: 'Não foi possível processar a resposta'
           });
@@ -177,9 +223,9 @@ Se não conseguir analisar: {"success": false, "error": "Motivo"}`
         await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (fileError) {
-        console.error('Erro ao processar arquivo:', file.name, fileError);
+        console.error('Erro ao processar arquivo:', file.fileName || file.name, fileError);
         results.push({
-          fileName: file.name,
+          fileName: file.fileName || file.name,
           success: false,
           error: fileError instanceof Error ? fileError.message : 'Erro ao processar arquivo'
         });

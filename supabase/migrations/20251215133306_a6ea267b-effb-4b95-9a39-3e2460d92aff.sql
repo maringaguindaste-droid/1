@@ -123,4 +123,3 @@ BEGIN
   WHERE created_at < NOW() - INTERVAL '180 days';
 END;
 $function$;
-

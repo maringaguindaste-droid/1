@@ -11,9 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, File, Camera } from "lucide-react";
+import { Loader2, Upload, File, Camera, AlertTriangle } from "lucide-react";
 import { formatDate } from "@/lib/formatters";
 import { DocumentScannerForForm } from "@/components/DocumentScannerForForm";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type DocumentFormData = {
   document_type_id: string;
@@ -38,7 +39,17 @@ const DocumentForm = () => {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>("");
   const [scannerOpen, setScannerOpen] = useState(false);
-  const { register, handleSubmit, setValue, watch } = useForm<DocumentFormData>();
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [existingDocumentId, setExistingDocumentId] = useState<string | null>(null);
+  const [pendingFormData, setPendingFormData] = useState<DocumentFormData | null>(null);
+  const [formKey, setFormKey] = useState(0); // Force re-render key
+  
+  const { register, handleSubmit, setValue, watch, reset } = useForm<DocumentFormData>();
+
+  // Controlled values for Select components
+  const documentTypeId = watch("document_type_id");
+  const employeeId = watch("employee_id");
+  const expirationDate = watch("expiration_date");
 
   const isEditMode = !!id;
 
@@ -75,7 +86,7 @@ const DocumentForm = () => {
     if (employeeIdFromParams && employees.length > 0) {
       const employee = employees.find((emp) => emp.id === employeeIdFromParams);
       if (employee) {
-        setValue("employee_id", employee.id);
+        setValue("employee_id", employee.id, { shouldValidate: true });
         setSelectedEmployeeName(`${employee.full_name} - ${employee.cpf}`);
       }
     }
@@ -101,9 +112,11 @@ const DocumentForm = () => {
 
       if (error) throw error;
 
-      Object.keys(data).forEach((key) => {
-        setValue(key as keyof DocumentFormData, data[key]);
-      });
+      // Set form values
+      setValue("document_type_id", data.document_type_id || "", { shouldValidate: true });
+      setValue("employee_id", data.employee_id || "", { shouldValidate: true });
+      setValue("expiration_date", data.expiration_date || "", { shouldValidate: true });
+      setValue("observations", data.observations || "");
 
       setPreviewUrl(data.file_path);
     } catch (error: any) {
@@ -142,16 +155,40 @@ const DocumentForm = () => {
     fileName: string;
     file: File;
   }) => {
-    if (data.documentType) {
-      setValue("document_type_id", data.documentType);
-    }
-    if (data.expirationDate) {
-      setValue("expiration_date", data.expirationDate);
-    }
+    console.log("Scan complete data:", data);
+    
+    // Set file first
     setSelectedFile(data.file);
     if (data.fileBase64.startsWith('data:image')) {
       setPreviewUrl(data.fileBase64);
     }
+    
+    // Update form values with force re-render
+    if (data.documentType) {
+      setValue("document_type_id", data.documentType, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
+    }
+    if (data.expirationDate) {
+      setValue("expiration_date", data.expirationDate, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
+    }
+    
+    // Force re-render to update controlled Select components
+    setFormKey(prev => prev + 1);
+    
+    toast({
+      title: "Dados aplicados!",
+      description: "Os campos foram preenchidos automaticamente. Verifique e complete os dados.",
+    });
+  };
+
+  const checkForDuplicate = async (empId: string, docTypeId: string): Promise<string | null> => {
+    const { data } = await supabase
+      .from("documents")
+      .select("id, expiration_date")
+      .eq("employee_id", empId)
+      .eq("document_type_id", docTypeId)
+      .maybeSingle();
+    
+    return data?.id || null;
   };
 
   const onSubmit = async (data: DocumentFormData) => {
@@ -167,6 +204,34 @@ const DocumentForm = () => {
         return;
       }
 
+      // Check for duplicate if creating new document
+      if (!isEditMode && data.employee_id && data.document_type_id) {
+        const existingId = await checkForDuplicate(data.employee_id, data.document_type_id);
+        if (existingId) {
+          setExistingDocumentId(existingId);
+          setPendingFormData(data);
+          setDuplicateDialogOpen(true);
+          setLoading(false);
+          return;
+        }
+      }
+
+      await saveDocument(data, false);
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveDocument = async (data: DocumentFormData, isUpdate: boolean) => {
+    try {
+      setLoading(true);
+      
       let filePath = previewUrl;
 
       // Upload file if selected
@@ -186,11 +251,12 @@ const DocumentForm = () => {
         status: 'pending' as const,
       };
 
-      if (isEditMode) {
+      if (isEditMode || (isUpdate && existingDocumentId)) {
+        const docId = isEditMode ? id : existingDocumentId;
         const { error } = await supabase
           .from("documents")
           .update(documentData)
-          .eq("id", id);
+          .eq("id", docId);
 
         if (error) throw error;
 
@@ -223,6 +289,13 @@ const DocumentForm = () => {
     }
   };
 
+  const handleDuplicateConfirm = async () => {
+    setDuplicateDialogOpen(false);
+    if (pendingFormData) {
+      await saveDocument(pendingFormData, true);
+    }
+  };
+
   if (loading && isEditMode) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -233,6 +306,14 @@ const DocumentForm = () => {
 
   return (
     <div className="container mx-auto py-6">
+      <ConfirmDialog
+        open={duplicateDialogOpen}
+        onOpenChange={setDuplicateDialogOpen}
+        onConfirm={handleDuplicateConfirm}
+        title="Documento Já Existe"
+        description="Este funcionário já possui um documento deste tipo. Deseja atualizar o documento existente com este novo arquivo?"
+      />
+
       <DocumentScannerForForm
         open={scannerOpen}
         onOpenChange={setScannerOpen}
@@ -274,8 +355,8 @@ const DocumentForm = () => {
               <div>
                 <Label htmlFor="document_type_id">Tipo de Documento *</Label>
                 <Select
-                  onValueChange={(value) => setValue("document_type_id", value)}
-                  defaultValue={watch("document_type_id")}
+                  value={documentTypeId || ""}
+                  onValueChange={(value) => setValue("document_type_id", value, { shouldValidate: true })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
@@ -300,8 +381,8 @@ const DocumentForm = () => {
                   />
                 ) : (
                   <Select
-                    onValueChange={(value) => setValue("employee_id", value)}
-                    defaultValue={watch("employee_id")}
+                    value={employeeId || ""}
+                    onValueChange={(value) => setValue("employee_id", value, { shouldValidate: true })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o funcionário" />
@@ -322,7 +403,8 @@ const DocumentForm = () => {
                 <Input
                   id="expiration_date"
                   type="date"
-                  {...register("expiration_date")}
+                  value={expirationDate || ""}
+                  onChange={(e) => setValue("expiration_date", e.target.value, { shouldValidate: true })}
                 />
               </div>
 

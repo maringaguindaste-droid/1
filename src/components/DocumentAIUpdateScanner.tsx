@@ -12,10 +12,11 @@ import { useDropzone } from "react-dropzone";
 
 interface SignatureInfo {
   count: number;
-  employee_signed: boolean;
-  instructor_signed: boolean;
-  responsible_signed: boolean;
-  fully_signed: boolean;
+  has_company_signature?: boolean;
+  has_instructor_signature?: boolean;
+  has_employee_signature?: boolean;
+  is_fully_signed?: boolean;
+  details?: string;
 }
 
 interface ScanResult {
@@ -148,6 +149,25 @@ export function DocumentAIUpdateScanner({
     return date.toISOString().split('T')[0];
   };
 
+  // Format signature observation for database
+  const formatSignatureObservation = (signatures: SignatureInfo): string => {
+    const { count, has_company_signature, has_instructor_signature, has_employee_signature, is_fully_signed } = signatures;
+    
+    const parts = [
+      `Empresa ${has_company_signature ? '✓' : '✗'}`,
+      `Instrutor ${has_instructor_signature ? '✓' : '✗'}`,
+      `Funcionário ${has_employee_signature ? '✓' : '✗'}`
+    ];
+    
+    const status = is_fully_signed || count === 3 
+      ? 'Completamente assinado' 
+      : count > 0 
+        ? 'Parcialmente assinado' 
+        : 'Sem assinaturas';
+    
+    return `Assinaturas: ${count}/3 (${parts.join(', ')}) - ${status}`;
+  };
+
   const handleUpdate = async () => {
     if (!selectedFile || !scanResult) return;
 
@@ -199,6 +219,11 @@ export function DocumentAIUpdateScanner({
         updateData.expiration_date = expirationDate;
       }
 
+      // Add signature observation to document
+      if (scanResult.signatures) {
+        updateData.observations = formatSignatureObservation(scanResult.signatures);
+      }
+
       const { error } = await supabase
         .from("documents")
         .update(updateData)
@@ -233,31 +258,31 @@ export function DocumentAIUpdateScanner({
         <div className="flex items-center gap-2">
           <PenTool className="w-4 h-4 text-primary" />
           <span className="font-medium text-sm">Assinaturas Detectadas</span>
-          <Badge variant={sig.fully_signed ? "default" : "secondary"}>
+          <Badge variant={sig.is_fully_signed ? "default" : "secondary"}>
             {sig.count} assinatura(s)
           </Badge>
         </div>
         <div className="flex flex-wrap gap-2 mt-2">
-          <Badge variant={sig.employee_signed ? "default" : "outline"} className="text-xs">
+          <Badge variant={sig.has_company_signature ? "default" : "outline"} className="text-xs">
+            <UserCheck className="w-3 h-3 mr-1" />
+            Empresa {sig.has_company_signature ? "✓" : "✗"}
+          </Badge>
+          <Badge variant={sig.has_instructor_signature ? "default" : "outline"} className="text-xs">
+            <UserCheck className="w-3 h-3 mr-1" />
+            Instrutor {sig.has_instructor_signature ? "✓" : "✗"}
+          </Badge>
+          <Badge variant={sig.has_employee_signature ? "default" : "outline"} className="text-xs">
             <User className="w-3 h-3 mr-1" />
-            Funcionário {sig.employee_signed ? "✓" : "✗"}
-          </Badge>
-          <Badge variant={sig.instructor_signed ? "default" : "outline"} className="text-xs">
-            <UserCheck className="w-3 h-3 mr-1" />
-            Instrutor {sig.instructor_signed ? "✓" : "✗"}
-          </Badge>
-          <Badge variant={sig.responsible_signed ? "default" : "outline"} className="text-xs">
-            <UserCheck className="w-3 h-3 mr-1" />
-            Responsável {sig.responsible_signed ? "✓" : "✗"}
+            Funcionário {sig.has_employee_signature ? "✓" : "✗"}
           </Badge>
         </div>
-        {sig.fully_signed && (
+        {sig.is_fully_signed && (
           <div className="flex items-center gap-1 text-success text-sm mt-1">
             <CheckCircle2 className="w-4 h-4" />
             <span>Documento completamente assinado</span>
           </div>
         )}
-        {!sig.fully_signed && sig.count > 0 && (
+        {!sig.is_fully_signed && sig.count > 0 && (
           <div className="flex items-center gap-1 text-warning text-sm mt-1">
             <AlertTriangle className="w-4 h-4" />
             <span>Documento parcialmente assinado</span>
